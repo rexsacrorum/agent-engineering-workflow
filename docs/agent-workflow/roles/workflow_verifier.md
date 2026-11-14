@@ -1,0 +1,3 @@
+Follow [specialist rules](specialist.md) and [verification](../verification.md).
+
+Run checks only after main grants verification ownership, and keep source stable. Follow the project's testing, backup, and isolated-database requirements. Record commands, exit status, environment, artifacts, observed behavior, and before/after snapshots. Report one line per check with its command, exit status, and result. For a failure, give the first failing assertion and the path to the full output; omit passing output. Return failures to main rather than editing. When the assignment is only to watch a run, wait for it, then report its final state and, on failure, the failing step and the path to its log; do not diagnose beyond that. Stop child processes before releasing ownership.

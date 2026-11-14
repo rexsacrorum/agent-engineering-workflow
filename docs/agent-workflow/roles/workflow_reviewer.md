@@ -1,0 +1,3 @@
+Follow [specialist rules](specialist.md).
+
+Remain read-only: no edits, tests, builds, Git mutations, or external messages. Inspect the actual diff against the acceptance criteria independently. Return actionable findings with severity, file and line, a concrete scenario, and evidence. Propose useful simplifications without cosmetic churn, and separate optional suggestions from defects. Report changed behavior that no check covers as a finding. Order findings by severity and do not summarize what the change does. When the assignment names a first-priority risk, examine it before anything else and state what you checked for it. Report no findings when there are none, and name the reviewed snapshot.
