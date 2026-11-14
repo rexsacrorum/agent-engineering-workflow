@@ -54,12 +54,50 @@ What this shows:
 What this does not show:
 
 - It is one session with no comparison run. It shows where tokens went, not that another split would have been cheaper.
-- The advisor row is priced as uncached top-tier input and output at list price; how the client bills it was not checked.
+- The advisor row is priced as uncached top-tier input and output at list price. The client's documentation says each advisor call reads the whole conversation without caching and is billed at the advisor model's rates on API billing; on a subscription it counts toward plan limits or usage credits ([advisor documentation](https://code.claude.com/docs/en/advisor)).
 - Cache writes are all priced at the one-hour rate, which overstates subagents: the best-practices page says subagents get a five-minute cache by default.
 - The transcript line format is internal to Claude Code and may change between versions. ([Sessions](https://code.claude.com/docs/en/sessions), read by a research pass.)
 - Review findings were not counted per reviewer; the list above is from the session owner's recollection. Counting them is the first job of the [measurement loop](agent-workflow/measurement.md).
 
 The cost of keeping output in main can be estimated. Output of size T tokens that stays in main's history is re-read by every later request, so it costs about T × (later requests) × (cache-read price). A subagent pays for its own run once and returns a short report. Delegation wins when the output is large and many requests follow it; it loses for a short check near the end of a session, or when the subagent must first rebuild context main already has.
+
+## Twenty-five sessions
+
+The same count was run over the 25 largest Claude Code sessions on the same machine that had at least $5 of list-price usage. They cover several projects and several months. Sessions on older models are priced at the current rate for the same model family, so the dollar column is approximate. The sessions were chosen by size, which favours long histories.
+
+| Session | List-price equivalent | Main agent | Re-reading, share of main's cost | Advisor calls | Subagents |
+| --- | --- | --- | --- | --- | --- |
+| 1 | $724 | 96% | 47% | 0% | 4% |
+| 2 | $584 | 70% | 57% | 29% | 1% |
+| 3 | $442 | 77% | 52% | 18% | 5% |
+| 4 | $415 | 92% | 48% | 7% | 1% |
+| 5 | $375 | 52% | 55% | 24% | 24% |
+| 6 | $279 | 75% | 53% | 24% | 1% |
+| 7 | $237 | 96% | 52% | 4% | 0% |
+| 8 | $229 | 62% | 59% | 38% | 0% |
+| 9 | $213 | 76% | 53% | 21% | 3% |
+| 10 | $201 | 96% | 58% | 4% | 0% |
+| 11 | $172 | 94% | 40% | 6% | 0% |
+| 12 | $171 | 46% | 49% | 18% | 36% |
+| 13 | $168 | 13% | 55% | 23% | 64% |
+| 14 | $143 | 68% | 54% | 10% | 22% |
+| 15 | $132 | 19% | 55% | 24% | 57% |
+| 16 | $126 | 83% | 45% | 15% | 2% |
+| 17 | $116 | 60% | 51% | 17% | 23% |
+| 18 | $107 | 76% | 34% | 0% | 24% |
+| 19 | $105 | 69% | 70% | 31% | 0% |
+| 20 | $100 | 89% | 56% | 11% | 0% |
+| 21 | $95 | 82% | 57% | 18% | 0% |
+| 22 | $93 | 89% | 47% | 11% | 0% |
+| 23 | $90 | 67% | 60% | 1% | 32% |
+| 24 | $89 | 30% | 25% | 32% | 38% |
+| 25 | $73 | 58% | 50% | 23% | 19% |
+
+- Re-reading its own history was between 25% and 70% of the main agent's cost, with a median of 53%; in 21 of 25 sessions it was between 45% and 60%.
+- The main agent's share of a session ranged from 13% to 96%, advisor calls from 0% to 38% with a median of 18%, and subagents from 0% to 64%.
+- The sessions did different work. The table shows where tokens went in each; it does not rank ways of working.
+
+In the session measured in detail, the characters that went into the main agent's history were 42% tool calls, 37% tool output, 14% user messages, system notes and subagent reports, and 7% the agent's own text; screenshots were not counted. A typical implementer in that session read about 250,000 new tokens and handed back a report of about 2,200.
 
 ## A knowledge store: what was measured
 
