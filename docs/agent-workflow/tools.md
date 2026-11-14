@@ -6,7 +6,7 @@ This package ships wiring for Claude Code:
 
 - Role wiring: `.claude/agents/workflow_*.md`, with `model` and `effort` in the frontmatter.
 - Installed to `~/.claude/agents/` and `~/.claude/skills/engineering-workflow/` by `python scripts/workflow.py install`.
-- Repository instructions: CLAUDE.md. Claude Code does not read AGENTS.md by itself; import it there with a line `@AGENTS.md`, or put the routing in CLAUDE.md.
+- Repository instructions: CLAUDE.md. When a repository has both CLAUDE.md and AGENTS.md, Claude Code reads only CLAUDE.md by default, so import the other file there with a line `@AGENTS.md` or put the routing in CLAUDE.md. It reads AGENTS.md by itself only when no CLAUDE.md exists.
 - Advisor: `workflow_advisor`.
 
 The installer records `package-root.txt` beside the installed skill, so a role can find its file when main did not pass the package path. `--replace` moves differing installed files to `<home>/workflow-backups/<time>/` before writing.
