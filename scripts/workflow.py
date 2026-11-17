@@ -14,7 +14,7 @@ import stat
 
 
 PACKAGE = Path(__file__).resolve().parents[1]
-ROLES = {'implementer', 'reviewer', 'verifier', 'docs', 'delivery', 'advisor'}
+ROLES = {'implementer', 'reviewer', 'verifier', 'advisor'}
 MODELS = {'opus', 'sonnet', 'haiku', 'fable', 'inherit'}
 EFFORTS = {'low', 'medium', 'high', 'xhigh', 'max'}
 # Roles that only read. Their wiring must deny the editing tools, so the client enforces it.

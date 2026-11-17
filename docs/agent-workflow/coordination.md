@@ -28,8 +28,8 @@ Use only roles that materially help. Choose by the shape of the task, not by its
 | Risky stage ahead, such as sign-in, accounts, or payments | Nobody yet | No extra role for the plan; the change itself is reviewed as the rows above say. Main maps each requirement of the stage to the evidence that will show it, in the task record or, where the record is not available, in the pull request, and reads the files the design depends on. A decision that is hard to reverse goes to the advisor. |
 | Browser checks, long test runs, log reading | Nobody | Verifier. |
 | Open-ended search: where a flow lives, across many files | Nobody | The client's search agent on the mid tier. Main keeps the lookup of a known symbol or string. |
-| Watching a long run: replay, deployment, retries | Nobody | A token-free wait where the client has one; otherwise a watcher on the cheap tier. |
-| Documentation or other bulk mechanics from a finished diff | Docs, or main for a few lines | Nobody. |
+| Watching a long run: CI, replay, deployment, retries | Nobody | A token-free wait where the client has one; otherwise a watcher on the cheap tier. |
+| Documentation or other bulk mechanics from a finished diff | Main for a few lines; otherwise one implementer on the mid tier | Nobody. |
 | Hard question | Nobody | Advisor; see [below](#escalate-a-hard-question). |
 
 Main keeps planning, contested design decisions, and any edit that depends on what it just found. Writes stay single-threaded within an area: parallel implementers are allowed only on paths that do not overlap and do not depend on each other's unfinished work.
@@ -41,12 +41,20 @@ Skip a role when its condition holds:
 | Reviewer | Strong | The edit is small, in one area, and touches no access rights, migration, or spending. |
 | Implementer | Strong; mid when the contract is clear and the area is routine | The change depends on what main just found, or the contract cannot be written in a few lines. |
 | Verifier | Mid | The check is one command with short output. A check with longer output may stay with main only as the last step of the session. A browser session always goes to the verifier. |
-| Docs | Mid | The writer can make the documentation change in the same diff. |
-| Watcher | Cheap | The client can wait for the run without tokens. |
-| Delivery | Cheap | The client can wait for CI without tokens: commit, push, and PR are a few commands with small output, so main does them. |
+| Watcher | Cheap | The client can wait for the run or for CI without tokens. |
 | Advisor | Top | The decision is easy to reverse and the evidence does not conflict. |
 
-Delegation pays when the output is large and many requests follow it, because everything main reads stays in its history and is re-read by every later request. It loses when the specialist must first rebuild context main already has. A specialist does not produce a better answer than main would for the same task; call one for parallel work, to keep bulky output out of main's history, or for a reader who has not seen how the code was written.
+Delegation pays when the output is large and many requests follow it, because everything main reads stays in its history and is re-read by every later request. It loses when the specialist must first rebuild context main already has. A specialist does not produce a better answer than main would for the same task on the same model. A role is worth calling only when at least one of these holds, and the table above still says when to skip it:
+
+- a reader is needed who has not seen how the code was written;
+- the output is large and its conclusion is small, as with builds, test runs, and logs;
+- the role has instructions of its own that main does not need in its context;
+- parts of the work can run in parallel on paths that do not overlap;
+- a simpler, faster model is enough, because the role reads much and decides little;
+- a shared resource needs one owner, such as a browser or a database;
+- a model stronger than main's is needed, which is the advisor.
+
+When none holds, main does the work. A project's own role is held to the same test.
 
 A project's profile says whether it has adopted the [output-trimming hook](../../templates/hooks/README.md). Where it has, main may run a test or build command itself when the hook covers it: one plain command, on the hook's list, through the Bash tool. Such a command returns only its last lines and the path of the full output. A command the hook does not cover, such as one with `&&`, a variable set in front, or one run through PowerShell, is not trimmed. Without the hook, or outside what it covers, a run with long output goes to the verifier.
 
@@ -60,11 +68,11 @@ Choose how to find code by the kind of question. A question about a known symbol
 
 The watcher has no wiring of its own. Give the verifier role file to a subagent at the cheap tier, with an assignment limited to waiting, reading the result, and reporting it. A mid-tier implementer is the implementer role with the tier lowered the same way. The four tiers are named in [tool wiring](tools.md); apply a tier other than the role's default only through a supported runtime override.
 
-The common roles are implementer, reviewer, verifier, docs, and delivery, plus the advisor described below. Their instructions live in `roles/workflow_*.md` under the shared [specialist rules](roles/specialist.md); each client's wiring file holds the model defaults, as described in [tool wiring](tools.md). Do not duplicate model defaults in prose. Main retains the current session model unless the user requests otherwise. Preserve explicit model and budget limits.
+The common roles are implementer, reviewer, and verifier, plus the advisor described below. Main commits, pushes, and opens the pull request itself under the [delivery rules](delivery.md): these are a few commands with small output. Their instructions live in `roles/workflow_*.md` under the shared [specialist rules](roles/specialist.md); each client's wiring file holds the model defaults, as described in [tool wiring](tools.md). Do not duplicate model defaults in prose. Main retains the current session model unless the user requests otherwise. Preserve explicit model and budget limits.
 
 When a profile names project replacements, use those role files and their settings for the corresponding duties. Do not launch both common and project roles for the same assignment. Give every specialist the common package root, selected profile and reference root, and target checkout. Read project role references from the project root and common role references from the common root. A profile can request a coordinator default, but runtime controls determine whether it can be applied.
 
-At most three specialists are active, subject to the runtime limit. Specialists do not delegate, even where the client permits nested subagents. Continue an existing implementer, verifier, or docs writer where its context remains useful. Select the named role when available and its runtime settings match its wiring file. Otherwise pass its role file to a default subagent with the wiring file's model and effort as supported overrides; use fresh context when required by the runtime. Supply the package path, target path, scope, evidence, and ownership. If settings cannot be applied, report the limitation and continue locally or with a supported alternative; do not claim a model changed because instructions say so.
+At most three specialists are active, subject to the runtime limit. Specialists do not delegate, even where the client permits nested subagents. Continue an existing implementer or verifier where its context remains useful. Select the named role when available and its runtime settings match its wiring file. Otherwise pass its role file to a default subagent with the wiring file's model and effort as supported overrides; use fresh context when required by the runtime. Supply the package path, target path, scope, evidence, and ownership. If settings cannot be applied, report the limitation and continue locally or with a supported alternative; do not claim a model changed because instructions say so.
 
 Each assignment states objective, acceptance criteria, target checkout, baseline, relevant paths and evidence, exclusions, allowed actions, resource ownership, required output, and a directory outside tracked source for bulky evidence. Reports follow the size limit in the [specialist rules](roles/specialist.md). Project-specific specialists follow the same ownership contract and specialist rules, including the report size limit, whether or not their role files link them.
 
