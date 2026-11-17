@@ -39,7 +39,7 @@ Skip a role when its condition holds:
 | Role | Tier | Skip it when |
 | --- | --- | --- |
 | Reviewer | Strong | The edit is small, in one area, and touches no access rights, migration, or spending. |
-| QA architect | Mid | The stage carries no unusual risk. It is a per-stage read, not a per-change checkpoint. |
+| QA architect | Strong | The stage carries no unusual risk. It is a per-stage read, not a per-change checkpoint. |
 | Implementer | Strong; mid when the contract is clear and the area is routine | The change depends on what main just found, or the contract cannot be written in a few lines. |
 | Verifier | Mid | The check is one command with short output. A check with longer output may stay with main only as the last step of the session. A browser session always goes to the verifier. |
 | Docs | Mid | The writer can make the documentation change in the same diff. |

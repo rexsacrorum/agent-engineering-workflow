@@ -1,7 +1,7 @@
 ---
 name: workflow_qa_architect
 description: Map acceptance criteria to evidence and assess verification coverage.
-model: sonnet
+model: opus
 effort: medium
 disallowedTools: Write, Edit, NotebookEdit
 ---
