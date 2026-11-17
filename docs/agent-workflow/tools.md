@@ -26,10 +26,10 @@ The [coordination contract](coordination.md#select-roles) names four tiers and l
 
 The defaults, role by role:
 
-- Roles that judge correctness or design (architecture, reviewer) and the implementer that owns correctness run on Opus at high effort. QA planning runs on Opus at medium: it maps evidence and runs nothing.
-- Docs and verifier run on Sonnet. Docs needs careful writing (high); the verifier mostly runs commands (medium).
+- The reviewer, which judges correctness, and the implementer, which owns it, run on Opus at high effort.
+- Docs, verifier, and QA architect run on Sonnet. Docs needs careful writing (high). The verifier mostly runs commands, and QA planning maps evidence and runs nothing (medium); the reviewer on the strong tier still reports missing coverage.
 - Delivery is mechanical Git and CI reading, so it runs on Haiku at medium; main keeps failure diagnosis. Where the client can wait for CI without spending tokens, main delivers and the role is not called.
-- The roles that only read (architecture, reviewer, QA architect, advisor) carry `disallowedTools: Write, Edit, NotebookEdit` in their wiring, so the client withholds the file-editing tools from them whatever the prompt says. They keep the shell and every other tool, so this closes the direct way to change a file and not every way. A role file passed to a default subagent, as the coordination fallback allows, carries no such denial.
+- The roles that only read (reviewer, QA architect, advisor) carry `disallowedTools: Write, Edit, NotebookEdit` in their wiring, so the client withholds the file-editing tools from them whatever the prompt says. They keep the shell and every other tool, so this closes the direct way to change a file and not every way. A role file passed to a default subagent, as the coordination fallback allows, carries no such denial.
 - A watcher or a mid-tier implementer has no wiring file. Main passes the verifier or implementer role with the lower model as a runtime override: the `model` argument of a subagent call in Claude Code. If the client cannot apply it, the role runs at its default and main reports that.
 - The advisor runs on Fable at high. The top tier costs several times more per token and a turn can take minutes, so it is an [escalation step](coordination.md#escalate-a-hard-question), called for one question at a time.
 

@@ -8,7 +8,7 @@ Adapt this file in the target repository as `docs/agent-workflow/project.md`. Re
 - Build, test, browser, and environment prerequisites; database/media backup rules.
 - Domain-specific agents and when their expertise is needed. A project role that only reads gets `disallowedTools: Write, Edit, NotebookEdit` in its agent file, like the common ones.
 - Acceptance evidence and explicit completion requirements.
-- Changes that always get an independent reviewer (access rights, migrations, spending) and stages that get one architecture and QA read of the plan.
+- Changes that always get an independent reviewer (access rights, migrations, spending) and stages that get one QA read of the plan.
 - Which role delivers when the client in use cannot wait for CI without tokens.
 - Where task records live, when the default in the workflow package's `templates/task-record.md` does not fit.
 - Whether the project uses the output-trimming hook from the workflow package's `templates/hooks/`, and its command list when the default does not fit.
