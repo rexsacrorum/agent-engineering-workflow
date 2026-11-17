@@ -1,13 +1,13 @@
-"""Validate or install this workflow package, or report a session's token usage.
+"""Validate or install this workflow package, or report a session's token usage and file edits.
 
 Python 3.11+, standard library only.
 """
 
 import argparse
-from datetime import datetime
+from datetime import date, datetime
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import shutil
 import stat
@@ -17,6 +17,10 @@ PACKAGE = Path(__file__).resolve().parents[1]
 ROLES = {'architecture', 'implementer', 'reviewer', 'verifier', 'qa_architect', 'docs', 'delivery', 'advisor'}
 MODELS = {'opus', 'sonnet', 'haiku', 'fable', 'inherit'}
 EFFORTS = {'low', 'medium', 'high', 'xhigh', 'max'}
+# Roles that only read. Their wiring must deny the editing tools, so the client enforces it.
+READ_ONLY = {'architecture', 'reviewer', 'qa_architect', 'advisor'}
+# MultiEdit is an older name: it appears in old transcripts and is not a tool to deny today.
+EDITING_TOOLS = {'Write', 'Edit', 'NotebookEdit'}
 POINTER = re.compile(r"docs/agent-workflow/roles/(\w+)\.md")
 
 
@@ -48,6 +52,11 @@ def validate(package=PACKAGE):
             raise ValueError(f'Unknown model in {path}')
         if fields.get('effort') not in EFFORTS:
             raise ValueError(f'Missing or unknown effort in {path}')
+        # One line, with or without brackets and quotes. A list over several lines is not read.
+        denied = set(re.findall(r'\w+', fields.get('disallowedTools', '')))
+        if path.stem.removeprefix('workflow_') in READ_ONLY and not EDITING_TOOLS <= denied:
+            raise ValueError(f'{path} is a read-only role: write `disallowedTools: '
+                             f"{', '.join(sorted(EDITING_TOOLS))}` on one line of its frontmatter")
         if POINTER.findall(body) != [path.stem]:
             raise ValueError(f'{path} must point at docs/agent-workflow/roles/{path.stem}.md')
         if not (package / 'docs' / 'agent-workflow' / 'roles' / f'{path.stem}.md').is_file():
@@ -148,13 +157,8 @@ def token_counts(usage, where):
     return counts
 
 
-def transcript_usage(path):
-    """Sum one Claude Code transcript into {(role or None, model): [requests, *tokens]}.
-
-    The format is not a public interface, so anything unexpected raises instead
-    of producing a partial count."""
-    messages = {}
-    stamps = []
+def transcript_records(path):
+    """Yield (location, record) for each line of a Claude Code transcript."""
     with open(path, encoding='utf-8') as stream:
         for number, line in enumerate(stream, 1):
             if not line.strip():
@@ -166,18 +170,29 @@ def transcript_usage(path):
                 raise ValueError(f'{where} is not JSON: {error}') from None
             if not isinstance(record, dict):
                 raise ValueError(f'{where} is not a JSON object')
-            if isinstance(record.get('timestamp'), str):
-                stamps.append(record['timestamp'])
-            message = record.get('message')
-            if record.get('type') != 'assistant' or not isinstance(message, dict) or 'usage' not in message:
-                continue
-            usage = message['usage']
-            if not isinstance(message.get('id'), str) or not isinstance(usage, dict):
-                raise ValueError(f'{where} has an assistant message without id or usage fields')
-            if not any(field in usage for field in TOKEN_FIELDS):
-                raise ValueError(f'{where} has usage without known token fields')
-            # A message is written once per content block; the last line carries its final counts.
-            messages[message['id']] = (message.get('model') or 'unknown', usage, where)
+            yield where, record
+
+
+def transcript_usage(path):
+    """Sum one Claude Code transcript into {(role or None, model): [requests, *tokens]}.
+
+    The format is not a public interface, so anything unexpected raises instead
+    of producing a partial count."""
+    messages = {}
+    stamps = []
+    for where, record in transcript_records(path):
+        if isinstance(record.get('timestamp'), str):
+            stamps.append(record['timestamp'])
+        message = record.get('message')
+        if record.get('type') != 'assistant' or not isinstance(message, dict) or 'usage' not in message:
+            continue
+        usage = message['usage']
+        if not isinstance(message.get('id'), str) or not isinstance(usage, dict):
+            raise ValueError(f'{where} has an assistant message without id or usage fields')
+        if not any(field in usage for field in TOKEN_FIELDS):
+            raise ValueError(f'{where} has usage without known token fields')
+        # A message is written once per content block; the last line carries its final counts.
+        messages[message['id']] = (message.get('model') or 'unknown', usage, where)
     rows = {}
     for model, usage, where in messages.values():
         own = token_counts(usage, where)
@@ -203,8 +218,12 @@ def transcript_usage(path):
     return rows, stamps
 
 
-def session_usage(session):
-    """Token totals per role and model for a session transcript and its subagent transcripts."""
+class NoUsage(ValueError):
+    """The main transcript holds no request: a session that was opened and left, or an unknown format."""
+
+
+def session_sources(session):
+    """The session transcript as 'main', then each subagent transcript with its role."""
     session = Path(session)
     if not session.is_file():
         raise ValueError(f'No session transcript at {session}')
@@ -215,16 +234,23 @@ def session_usage(session):
         if meta.is_file():
             role = json.loads(meta.read_text(encoding='utf-8')).get('agentType') or 'unknown'
         sources.append((role, path))
+    return sources
+
+
+def session_usage(session):
+    """Token totals per role and model for a session transcript and its subagent transcripts.
+
+    Advisor calls get rows of their own, one per calling role."""
     totals = {}
     stamps = []
-    for role, path in sources:
+    for role, path in session_sources(session):
         rows, seen = transcript_usage(path)
         stamps += seen
         if role == 'main' and not any(part is None for part, _ in rows):
-            raise ValueError(f'No assistant usage records in {session}; the transcript format may have changed')
+            raise NoUsage(f'No assistant usage records in {session}; the transcript format may have changed')
         counted = set()
         for (part, model), counts in rows.items():
-            key = (part or role, model)
+            key = (f'{part}, called by {role}' if part else role, model)
             total = totals.setdefault(key, {'agents': 0, 'requests': 0, **dict.fromkeys(TOKEN_FIELDS, 0)})
             if key not in counted:
                 counted.add(key)
@@ -233,6 +259,83 @@ def session_usage(session):
             for field, value in zip(TOKEN_FIELDS, counts[1:]):
                 total[field] += value
     return totals, (min(stamps), max(stamps)) if stamps else None
+
+
+WRITE_TOOLS = {'Edit', 'Write', 'MultiEdit', 'NotebookEdit'}
+SUBAGENT_TOOLS = {'Agent', 'Task'}
+HISTORY_PARTS = ('tool calls', 'tool output', 'messages, client notes and subagent reports', "the agent's own text")
+
+
+def text_length(content):
+    """Characters of text in a message's content. Images and other non-text parts count as zero."""
+    if isinstance(content, str):
+        return len(content)
+    if isinstance(content, list):
+        return sum(len(part['text']) for part in content
+                   if isinstance(part, dict) and part.get('type') == 'text' and isinstance(part.get('text'), str))
+    return 0
+
+
+def transcript_activity(path):
+    """Count file-editing calls in one transcript and the characters its conversation is made of.
+
+    Only 'assistant' and 'user' records are read. The client also stores copies of its requests
+    in records of other types, some without a timestamp; they repeat calls already counted here.
+    A call or a result that appears on more than one line is counted once, by its id."""
+    edits = 0
+    history = dict.fromkeys(HISTORY_PARTS, 0)
+    calls = {}
+    results = set()
+    for _, record in transcript_records(path):
+        message = record.get('message')
+        kind = record.get('type')
+        if kind not in ('assistant', 'user') or not isinstance(message, dict):
+            continue
+        content = message.get('content')
+        if isinstance(content, str):
+            content = [{'type': 'text', 'text': content}]
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if block.get('type') == 'text':
+                part = "the agent's own text" if kind == 'assistant' else 'messages, client notes and subagent reports'
+                history[part] += text_length([block])
+            elif block.get('type') == 'tool_use' and kind == 'assistant' and block.get('id') not in calls:
+                calls[block.get('id')] = block.get('name')
+                history['tool calls'] += len(json.dumps(block.get('input'), ensure_ascii=False))
+                edits += block.get('name') in WRITE_TOOLS
+            elif block.get('type') == 'tool_result' and kind == 'user' and block.get('tool_use_id') not in results:
+                results.add(block.get('tool_use_id'))
+                reported = calls.get(block.get('tool_use_id')) in SUBAGENT_TOOLS
+                part = 'messages, client notes and subagent reports' if reported else 'tool output'
+                history[part] += text_length(block.get('content'))
+    return edits, history
+
+
+def session_activity(session):
+    """File-editing calls per role, and what the main agent's history is made of, in characters."""
+    edits = {}
+    history = None
+    for role, path in session_sources(session):
+        count, parts = transcript_activity(path)
+        edits[role] = edits.get(role, 0) + count
+        if role == 'main':
+            history = parts
+    return edits, history
+
+
+def format_activity(edits, history):
+    order = sorted(((role, count) for role, count in edits.items() if count),
+                   key=lambda item: (item[0] != 'main', -item[1], item[0]))
+    lines = ['File-editing calls: ' + (', '.join(f'{role} {count:,}' for role, count in order) or 'none') + '.']
+    total = sum(history.values())
+    if total:
+        shares = ', '.join(f'{part} {round(100 * history[part] / total)}%' for part in HISTORY_PARTS)
+        lines.append(f"Main's history by characters: {shares}. This covers the whole transcript, "
+                     'including what a compaction later replaced; images, thinking and attachments are not counted.')
+    return '\n'.join(lines)
 
 
 def format_usage(totals, span):
@@ -247,6 +350,105 @@ def format_usage(totals, span):
     return '\n'.join(lines)
 
 
+def project_name(session):
+    """The project a session worked in, from the working directory its records name."""
+    for _, record in transcript_records(session):
+        if isinstance(record.get('cwd'), str) and record['cwd']:
+            parts = PurePosixPath(record['cwd'].replace('\\', '/')).parts
+            for index in range(len(parts) - 1):
+                if parts[index:index + 2] == ('.claude', 'worktrees'):  # a worktree of the project
+                    parts = parts[:index]
+                    break
+            return parts[-1] if parts and parts[-1] != '/' else session.parent.name
+    return session.parent.name
+
+
+def session_row(session):
+    """One log row for a session, from the same counts the usage report prints."""
+    totals, span = session_usage(session)
+    if not span:
+        raise ValueError(f'No timestamps in {session}')
+    edits, history = session_activity(session)
+
+    def millions(count):
+        return f'{count / 1_000_000:.2f}'
+
+    def listed(counts):
+        return ', '.join(f'{name} {value}' for name, value in sorted(counts.items(), key=lambda item: -item[1])) or 'none'
+
+    main_rows = [row for (role, _), row in totals.items() if role == 'main']
+    advisor = {}
+    output = {}
+    for (role, _), row in totals.items():
+        if role.startswith('advisor, called by '):
+            caller = role.removeprefix('advisor, called by ')
+            advisor[caller] = advisor.get(caller, 0) + row['requests']
+        else:
+            output[role] = output.get(role, 0) + row['output_tokens']
+    started = {}
+    for role, _ in session_sources(session)[1:]:
+        started[role] = started.get(role, 0) + 1
+    first, last = (datetime.fromisoformat(stamp.replace('Z', '+00:00')) for stamp in span)
+    used = sum(history.values())
+    requests = sum(row['requests'] for row in main_rows)
+    return {
+        'first': span[0],
+        'last': span[1],
+        'requests': requests,
+        'cells': [
+            span[0][:10], project_name(session), session.stem[:8],
+            f'{(last - first).total_seconds() / 3600:.1f}',
+            f'{requests:,}',
+            millions(sum(row['cache_read_input_tokens'] for row in main_rows)),
+            ', '.join(f'{role} {millions(count)}' for role, count in
+                      sorted(output.items(), key=lambda item: -item[1])) or 'none',
+            listed(started),
+            listed(advisor),
+            listed({role: count for role, count in edits.items() if count}),
+            f"{round(100 * (history['tool calls'] + history['tool output']) / used)}%" if used else 'none',
+        ],
+    }
+
+
+SESSION_COLUMNS = ('Started (UTC)', 'Project', 'Session', 'Hours from first to last record', 'Main requests',
+                   'Main cache read, M', 'Output by role, M', 'Subagents started', 'Advisor calls',
+                   'File-editing calls', "Tool calls and output in main's history")
+
+
+def sessions_table(home, since=None, project=None, least=20):
+    """A Markdown table of the sessions under a Claude Code home, oldest first.
+
+    A session is listed when its last record is on or after `since` (a UTC date) and its main
+    agent made at least `least` requests. A session with no request at all is passed over. A
+    transcript that cannot be read is counted and never stops the table."""
+    rows = []
+    unreadable = small = 0
+    for session in sorted((Path(home) / 'projects').glob('*/*.jsonl')):
+        try:
+            # A file last written more than a day before the date holds no later record.
+            if since and date.fromtimestamp(session.stat().st_mtime).toordinal() < since.toordinal() - 1:
+                continue
+            if project and project.lower() not in project_name(session).lower():
+                continue
+            row = session_row(session)
+        except NoUsage:
+            continue
+        except Exception:  # whatever one transcript holds, the others are still listed
+            unreadable += 1
+            continue
+        if since and row['last'][:10] < since.isoformat():
+            continue
+        if row['requests'] < least:
+            small += 1
+            continue
+        rows.append((row['first'], row['cells']))
+    lines = ['| ' + ' | '.join(SESSION_COLUMNS) + ' |', '|' + ' --- |' * len(SESSION_COLUMNS)]
+    lines += ['| ' + ' | '.join(cells) + ' |' for _, cells in sorted(rows)]
+    lines.append(f'{len(rows)} sessions listed; {small} with fewer than {least} main requests left out; '
+                 f'{unreadable} transcripts could not be read.')
+    return '\n'.join(lines)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='command', required=True)
@@ -255,12 +457,20 @@ def main():
     installer.add_argument('--home', type=Path, help='client home; defaults to CLAUDE_CONFIG_DIR or ~/.claude')
     installer.add_argument('--replace', action='store_true',
                            help='back up and replace installed files that differ')
-    usage = commands.add_parser('usage', help='token totals per role for one Claude Code session')
+    usage = commands.add_parser('usage', help='token totals and file edits per role for one Claude Code session')
     usage.add_argument('session', type=Path, help='path to the session .jsonl transcript')
+    sessions = commands.add_parser('sessions', help='one log row per Claude Code session, for the task log')
+    sessions.add_argument('--since', type=date.fromisoformat, help='only sessions with a record on or after this date')
+    sessions.add_argument('--project', help='only sessions whose project name contains this text')
+    sessions.add_argument('--least', type=int, default=20, help='leave out sessions with fewer main requests')
+    sessions.add_argument('--home', type=Path, help='Claude Code home; defaults to CLAUDE_CONFIG_DIR or ~/.claude')
     args = parser.parse_args()
-    if args.command == 'usage':
+    if args.command == 'sessions':
+        print(sessions_table(args.home or default_home(), args.since, args.project, args.least))
+    elif args.command == 'usage':
         try:
             print(format_usage(*session_usage(args.session)))
+            print(format_activity(*session_activity(args.session)))
         except (ValueError, OSError) as error:
             parser.exit(1, f'usage report failed: {error}\n')
     elif args.command == 'validate':

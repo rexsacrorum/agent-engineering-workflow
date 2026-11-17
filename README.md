@@ -14,7 +14,8 @@ It was extracted from daily use on several private projects. The rules are groun
 6. **Keep bulky output out of the main agent's history.** Everything main reads is re-read by every later request. Test runs, browser checks and logs go to a verifier on a cheaper tier, which returns one line per check and a path to the full output.
 7. **Reports are short.** About 300 words plus findings; evidence goes to a file.
 8. **Waiting should cost nothing.** Use the client's own notification for long runs; otherwise a watcher on the cheapest tier.
-9. **Measure, because felt speed is not evidence.** One line per task, a read-only usage report, and a periodic review that proposes instruction changes for a person to accept.
+9. **One substantial task per session.** A second task pays for the first one's history on every request. A short task record and the pull request carry what the next session needs.
+10. **Measure, because felt speed is not evidence.** One line per task, a read-only usage report, and a periodic review that proposes instruction changes for a person to accept.
 
 The full text is the [coordination contract](docs/agent-workflow/coordination.md).
 
@@ -39,6 +40,8 @@ It is one session with no comparison run. It shows where tokens went, not that a
 - [.claude/agents](.claude/agents): thin wiring that owns model defaults; see [tool wiring](docs/agent-workflow/tools.md).
 - [verification](docs/agent-workflow/verification.md), [delivery](docs/agent-workflow/delivery.md), [knowledge](docs/agent-workflow/knowledge.md), [measurement](docs/agent-workflow/measurement.md).
 - [project template](templates/project.md): the profile a participating repository adapts.
+- [task record](templates/task-record.md): the shape of the per-task record that carries a task from one session to the next.
+- [output-trimming hook](templates/hooks/README.md): an optional Claude Code hook that keeps test and build output out of the conversation. The installer does not install it.
 - [evidence](docs/evidence.md): sources, the measured session, and a reading list.
 
 ## Install
@@ -70,7 +73,15 @@ Open a new session after installing so the roles are discovered.
 python scripts/workflow.py usage <session.jsonl>
 ```
 
-prints token totals per role and model for one Claude Code session, from the session transcript and its subagent transcripts. It only reads, counts each API message once, and reports advisor calls as their own row. It stops with an error when a usage record does not have the shape it expects, because the transcript format is internal to the client and can change. [Measurement](docs/agent-workflow/measurement.md) describes the task log and the periodic review.
+prints token totals per role and model for one Claude Code session, from the session transcript and its subagent transcripts. It counts each API message once and reports advisor calls as their own row, split by the role that called. It also prints file-editing calls per role and what the main agent's history is made of. It stops with an error when a usage record does not have the shape it expects, because the transcript format is internal to the client and can change.
+
+```
+python scripts/workflow.py sessions --since <date>
+```
+
+prints a summary of the same counts as one row per session on this machine, for the task log. Both commands only read.
+
+[Measurement](docs/agent-workflow/measurement.md) describes the task log and the periodic review.
 
 ## Limits
 
