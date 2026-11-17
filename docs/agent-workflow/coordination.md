@@ -25,7 +25,7 @@ Use only roles that materially help. Choose by the shape of the task, not by its
 | Several independent parts on disjoint paths | One implementer per part, in parallel | One fresh reviewer on the combined diff. |
 | Follow-up in an area an implementer already built | The same implementer, continued | A fresh reviewer when the follow-up is substantial. |
 | Change of any size to access rights, a data migration, or anything that spends money | As above | A reviewer always, with that risk named as its first priority. |
-| Risky stage ahead, such as sign-in, accounts, or payments | Nobody yet | QA architect once, on the plan for the stage. Main reads the files the design depends on and decides; a decision that is hard to reverse goes to the advisor. |
+| Risky stage ahead, such as sign-in, accounts, or payments | Nobody yet | No extra role for the plan; the change itself is reviewed as the rows above say. Main maps each requirement of the stage to the evidence that will show it, in the task record or, where the record is not available, in the pull request, and reads the files the design depends on. A decision that is hard to reverse goes to the advisor. |
 | Browser checks, long test runs, log reading | Nobody | Verifier. |
 | Open-ended search: where a flow lives, across many files | Nobody | The client's search agent on the mid tier. Main keeps the lookup of a known symbol or string. |
 | Watching a long run: replay, deployment, retries | Nobody | A token-free wait where the client has one; otherwise a watcher on the cheap tier. |
@@ -39,7 +39,6 @@ Skip a role when its condition holds:
 | Role | Tier | Skip it when |
 | --- | --- | --- |
 | Reviewer | Strong | The edit is small, in one area, and touches no access rights, migration, or spending. |
-| QA architect | Strong | The stage carries no unusual risk. It is a per-stage read, not a per-change checkpoint. |
 | Implementer | Strong; mid when the contract is clear and the area is routine | The change depends on what main just found, or the contract cannot be written in a few lines. |
 | Verifier | Mid | The check is one command with short output. A check with longer output may stay with main only as the last step of the session. A browser session always goes to the verifier. |
 | Docs | Mid | The writer can make the documentation change in the same diff. |
@@ -61,7 +60,7 @@ Choose how to find code by the kind of question. A question about a known symbol
 
 The watcher has no wiring of its own. Give the verifier role file to a subagent at the cheap tier, with an assignment limited to waiting, reading the result, and reporting it. A mid-tier implementer is the implementer role with the tier lowered the same way. The four tiers are named in [tool wiring](tools.md); apply a tier other than the role's default only through a supported runtime override.
 
-The common roles are implementer, reviewer, verifier, qa_architect, docs, and delivery, plus the advisor described below. Their instructions live in `roles/workflow_*.md` under the shared [specialist rules](roles/specialist.md); each client's wiring file holds the model defaults, as described in [tool wiring](tools.md). Do not duplicate model defaults in prose. Main retains the current session model unless the user requests otherwise. Preserve explicit model and budget limits.
+The common roles are implementer, reviewer, verifier, docs, and delivery, plus the advisor described below. Their instructions live in `roles/workflow_*.md` under the shared [specialist rules](roles/specialist.md); each client's wiring file holds the model defaults, as described in [tool wiring](tools.md). Do not duplicate model defaults in prose. Main retains the current session model unless the user requests otherwise. Preserve explicit model and budget limits.
 
 When a profile names project replacements, use those role files and their settings for the corresponding duties. Do not launch both common and project roles for the same assignment. Give every specialist the common package root, selected profile and reference root, and target checkout. Read project role references from the project root and common role references from the common root. A profile can request a coordinator default, but runtime controls determine whether it can be applied.
 
@@ -71,7 +70,7 @@ Each assignment states objective, acceptance criteria, target checkout, baseline
 
 ## Escalate a hard question
 
-Main may consult the advisor without separate confirmation when evidence conflicts, when an architecture, security, concurrency, or migration decision is hard to reverse, or when the same failure survives two repairs. Ask once per stage: one bounded question with the evidence and the options already considered. The advisor recommends; main decides and returns to the role defaults. Explicit user model and budget limits still apply. In Claude Code the advisor is `workflow_advisor`. A client without such a role gives the question to its strongest supported setting within the project's model limits. When the session already runs on the advisor's model, the advisor still gives a reader with fresh context, which helps most with conflicting evidence; say in main's final report that it was not a stronger model.
+Main may consult the advisor without separate confirmation when evidence conflicts, when an architecture, security, concurrency, or migration decision is hard to reverse, when the evidence planned for a stage that is hard to undo may not be enough, or when the same failure survives two repairs. Ask once per stage: one bounded question with the evidence and the options already considered; it may cover both a decision and the evidence planned for it. The advisor recommends; main decides and returns to the role defaults. Explicit user model and budget limits still apply. In Claude Code the advisor is `workflow_advisor`. A client without such a role gives the question to its strongest supported setting within the project's model limits. When the session already runs on the advisor's model, the advisor still gives a reader with fresh context, which helps most with conflicting evidence; say in main's final report that it was not a stronger model.
 
 The client's own advisor tool is a different thing from the advisor role. Each call sends the caller's whole conversation to the advisor model without caching, so its price grows with the length of the session. This contract does not limit main's use of it. Specialists follow the limit in the [specialist rules](roles/specialist.md).
 
@@ -81,7 +80,7 @@ Grant source ownership of any path to one writer at a time, including main. Para
 
 Stop source edits before review and verification. Capture HEAD, separate staged/unstaged binary diffs, and the paths and content hashes of non-ignored untracked files. Store evidence outside tracked source; record relevant ignored inputs separately. Give reviewer and verifier the same snapshot and compare it again after they finish. HEAD alone is insufficient in a dirty checkout. Unexpected edits invalidate affected evidence; reconcile with the owner rather than reset.
 
-Only the verification owner runs tests, builds, browser mutations, or shared services during verification. Reviewer and QA architect remain read-only. Track shared roots, ports, containers, outputs, and child processes. Before repairs, wait for affected readers to finish and for verification processes to stop. An interrupt request alone does not release resources.
+Only the verification owner runs tests, builds, browser mutations, or shared services during verification. The reviewer remains read-only. Track shared roots, ports, containers, outputs, and child processes. Before repairs, wait for affected readers to finish and for verification processes to stop. An interrupt request alone does not release resources.
 
 Collect findings, then assign each repair to the writer that owns those paths. Correct causes and simplify affected code without unrelated cleanup. Necessary refactors are within feature scope unless they cross explicit exclusions or another owner's paths. Report larger unrelated issues with evidence and a proposed scope. Repeat affected checks on the new stable snapshot; do not create separate concurrent repair loops.
 
@@ -89,6 +88,6 @@ Collect findings, then assign each repair to the writer that owns those paths. C
 
 Use [verification](verification.md), [delivery](delivery.md), and optionally [knowledge](knowledge.md). When the project keeps a task log, add its line afterwards, as described in [measurement](measurement.md). Main resolves acceptance criteria, review findings, and required evidence. Record accepted deferred work in the project's tracked plan or an authorized issue, not only in chat or an external knowledge store. Do not invent issues solely for ceremony.
 
-A request can cover less than its task. Judge the run against the criteria it covers, and the task against every line of the [task record](../../templates/task-record.md). A criterion this run does not cover stays open. Deferred is only for a criterion the user accepted as out of scope, recorded where the task record says. Give the reviewer, the QA architect, and the verifier the whole list with the criteria of this run marked, and name the open criteria at the top of main's final report.
+A request can cover less than its task. Judge the run against the criteria it covers, and the task against every line of the [task record](../../templates/task-record.md). A criterion this run does not cover stays open. Deferred is only for a criterion the user accepted as out of scope, recorded where the task record says. Give the reviewer and the verifier the whole list with the criteria of this run marked, and name the open criteria at the top of main's final report.
 
 Report what changed, verification results and limits, unresolved findings, and delivery state. Distinguish local, pushed, merged, and released. If delegation is unavailable, state that review was not independent. A missing knowledge store does not block work supported by repository evidence.
