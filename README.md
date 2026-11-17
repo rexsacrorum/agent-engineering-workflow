@@ -41,7 +41,7 @@ It is one session with no comparison run. It shows where tokens went, not that a
 - [verification](docs/agent-workflow/verification.md), [delivery](docs/agent-workflow/delivery.md), [knowledge](docs/agent-workflow/knowledge.md), [measurement](docs/agent-workflow/measurement.md).
 - [project template](templates/project.md): the profile a participating repository adapts.
 - [task record](templates/task-record.md): the shape of the per-task record that carries a task from one session to the next.
-- [output-trimming hook](templates/hooks/README.md): an optional Claude Code hook that keeps test and build output out of the conversation. The installer does not install it.
+- [hooks](templates/hooks/README.md): two optional Claude Code hooks. One keeps test and build output out of the conversation; the other tells a new session that its branch has a task record. The installer installs neither.
 - [evidence](docs/evidence.md): sources, the measured session, and a reading list.
 
 ## Install
@@ -66,7 +66,7 @@ Open a new session after installing so the roles are discovered.
 
    > For substantial tasks use the `engineering-workflow` skill with the project profile in `docs/agent-workflow/project.md`. Keep small standalone edits direct, except a change to access rights, a data migration, or spending, which gets an independent reviewer at any size.
 
-   Put the exception in the routing line itself. A small edit does not load the skill, so a rule that lives only inside the skill never reaches it.
+   Put the exception in the routing line itself. A small edit does not load the skill, so a rule that lives only inside the skill never reaches it. Add a second line for the same reason: when `task-records/<branch>.md` exists in the repository's Git directory (`git rev-parse --git-common-dir`), with every `/` of the branch name replaced by `-`, read it before anything else. A task that moved to a new branch keeps its old record name; the pull request description names it.
 3. A wrapper is a small project skill that loads this one with the project's own profile. A project needs one only when it replaces the common roles with its own, or needs a fallback profile for checkouts that lack one. Otherwise the common skill and the profile are the whole workflow.
 
 ## Measure
