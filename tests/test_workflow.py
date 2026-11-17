@@ -19,13 +19,13 @@ class InstallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
             (home / 'settings.json').write_text('{}\n')
-            self.assertEqual(workflow.install(home), 10)
-            self.assertEqual(workflow.install(home), 10)
+            self.assertEqual(workflow.install(home), 6)
+            self.assertEqual(workflow.install(home), 6)
             self.assertEqual((home / 'settings.json').read_text(), '{}\n')
             root = Path((home / 'skills/engineering-workflow/package-root.txt').read_text().strip())
             self.assertTrue((root / 'docs/agent-workflow/coordination.md').is_file())
             agents = list((home / 'agents').glob('workflow_*.md'))
-            self.assertEqual(len(agents), 8)
+            self.assertEqual(len(agents), 4)
             for agent in agents:
                 fields, _ = workflow.frontmatter(agent)
                 self.assertIn(fields['effort'], workflow.EFFORTS)
@@ -101,7 +101,7 @@ class InstallTests(unittest.TestCase):
                 link.symlink_to(real, target_is_directory=True)
             except OSError:
                 self.skipTest('Creating directory symlinks is unavailable')
-            self.assertEqual(workflow.install(link), 10)
+            self.assertEqual(workflow.install(link), 6)
             self.assertTrue((real / 'skills/engineering-workflow/SKILL.md').is_file())
 
     @unittest.skipUnless(os.name == 'nt', 'Windows junction test')

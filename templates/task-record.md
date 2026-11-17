@@ -10,7 +10,7 @@ The request in one or two sentences. What is authorized: commit, push, merge. Ba
 
 ## Acceptance criteria
 
-One line per criterion, each with a status: open, done, deferred (and where that is recorded), or moved to another task. The task is complete when no line is open.
+One line per criterion, each with a status: open, done, deferred (and where that is recorded), or moved to another task. The task is complete when no line is open. Before a risky stage, add to each of its criteria the evidence that will show it.
 
 ## Decisions
 

@@ -14,11 +14,11 @@ import stat
 
 
 PACKAGE = Path(__file__).resolve().parents[1]
-ROLES = {'architecture', 'implementer', 'reviewer', 'verifier', 'qa_architect', 'docs', 'delivery', 'advisor'}
+ROLES = {'implementer', 'reviewer', 'verifier', 'advisor'}
 MODELS = {'opus', 'sonnet', 'haiku', 'fable', 'inherit'}
 EFFORTS = {'low', 'medium', 'high', 'xhigh', 'max'}
 # Roles that only read. Their wiring must deny the editing tools, so the client enforces it.
-READ_ONLY = {'architecture', 'reviewer', 'qa_architect', 'advisor'}
+READ_ONLY = {'reviewer', 'advisor'}
 # MultiEdit is an older name: it appears in old transcripts and is not a tool to deny today.
 EDITING_TOOLS = {'Write', 'Edit', 'NotebookEdit'}
 POINTER = re.compile(r"docs/agent-workflow/roles/(\w+)\.md")
