@@ -47,7 +47,7 @@ Skip a role when its condition holds:
 Delegation pays when the output is large and many requests follow it, because everything main reads stays in its history and is re-read by every later request. It loses when the specialist must first rebuild context main already has. A specialist does not produce a better answer than main would for the same task on the same model. A role is worth calling only when at least one of these holds, and the table above still says when to skip it:
 
 - a reader is needed who has not seen how the code was written;
-- the output is large and its conclusion is small, as with builds, test runs, and logs;
+- the output is large and its conclusion is small, as with builds, test runs, logs, and the many reads and edits of a large mechanical change;
 - the role has instructions of its own that main does not need in its context;
 - parts of the work can run in parallel on paths that do not overlap;
 - a simpler, faster model is enough, because the role reads much and decides little;
