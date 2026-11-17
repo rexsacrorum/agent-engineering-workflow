@@ -6,6 +6,8 @@ Main owns scope, decisions, integration, and completion. Explicit user instructi
 
 Read target AGENTS.md (in Claude Code also CLAUDE.md), applicable nested instructions, and the project profile. Verify the absolute checkout and Git remote. Preserve the user's selected checkout and all pre-existing changes. Record acceptance criteria, authorization, base, HEAD, task-owned paths, and existing staged/unstaged changes in a local task record outside tracked source. Never include secrets or unrelated diff contents.
 
+Give each substantial task its own session. Everything a session has read is sent again with every later request, so a second task pays for the first one's history. The task record and the pull request carry what the next session needs; the record follows the [template](../../templates/task-record.md) and lives where the template says, so a later session in the same clone finds it. When the user brings a new substantial task into a session that has already finished one, do the task, and mention once in that session that a fresh session would cost less. Do not wait for an answer and do not repeat it. Follow-up work on the same task stays in its session, and a task that takes several pull requests is one task.
+
 Keep package paths separate from target paths. Shared tools may point at another workspace; verify their root and coordinate switches. Tool selection, commands, database safety, UI verification, and project specialists come from the target profile and repository instructions.
 
 A project profile extends this contract and can replace its defaults for roles, model limits, evidence gates, and delivery procedures. User instructions and actual authorization still govern actions. Read linked project policies when they apply. A project may ship a wrapper skill that loads this workflow with a fallback profile for checkouts that lack one. Such a profile retains its own reference root; it never changes the task checkout or common package root.
@@ -23,6 +25,7 @@ Use only roles that materially help. Choose by the shape of the task, not by its
 | Change of any size to access rights, a data migration, or anything that spends money | As above | A reviewer always, with that risk named as its first priority. |
 | Risky stage ahead, such as sign-in, accounts, or payments | Nobody yet | Architecture and QA architect once, on the plan for the stage. |
 | Browser checks, long test runs, log reading | Nobody | Verifier. |
+| Open-ended search: where a flow lives, across many files | Nobody | The client's search agent on the mid tier. Main keeps the lookup of a known symbol or string. |
 | Watching a long run: replay, deployment, retries | Nobody | A token-free wait where the client has one; otherwise a watcher on the cheap tier. |
 | Documentation or other bulk mechanics from a finished diff | Docs, or main for a few lines | Nobody. |
 | Hard question | Nobody | Advisor; see [below](#escalate-a-hard-question). |
@@ -37,7 +40,7 @@ Skip a role when its condition holds:
 | Architecture | Strong | The design is settled and the change stays inside one area. |
 | QA architect | Strong | The stage carries no unusual risk. It is a per-stage read, not a per-change checkpoint. |
 | Implementer | Strong; mid when the contract is clear and the area is routine | The change depends on what main just found, or the contract cannot be written in a few lines. |
-| Verifier | Mid | The check is one short command, or little work will follow it in this session. |
+| Verifier | Mid | The check is one command with short output. A check with longer output may stay with main only as the last step of the session. A browser session always goes to the verifier. |
 | Docs | Mid | The writer can make the documentation change in the same diff. |
 | Watcher | Cheap | The client can wait for the run without tokens. |
 | Delivery | Cheap | The client can wait for CI without tokens: commit, push, and PR are a few commands with small output, so main does them. |
@@ -45,9 +48,13 @@ Skip a role when its condition holds:
 
 Delegation pays when the output is large and many requests follow it, because everything main reads stays in its history and is re-read by every later request. It loses when the specialist must first rebuild context main already has. A specialist does not produce a better answer than main would for the same task; call one for parallel work, to keep bulky output out of main's history, or for a reader who has not seen how the code was written.
 
+A project's profile says whether it has adopted the [output-trimming hook](../../templates/hooks/README.md). Where it has, main may run a test or build command itself when the hook covers it: one plain command, on the hook's list, through the Bash tool. Such a command returns only its last lines and the path of the full output. A command the hook does not cover, such as one with `&&`, a variable set in front, or one run through PowerShell, is not trimmed. Without the hook, or outside what it covers, a run with long output goes to the verifier.
+
 A token-free wait means the client tells the session when a run ends without the session polling: a CI monitor that wakes the session, or a background command that notifies on exit. It is a property of the client in use, not of the project. The watcher only reports the outcome; main diagnoses a failure or assigns it.
 
 A reviewer is never reused, because it has seen the reasoning. Main checks small repairs against the findings itself. A repair that is substantial, or that touches the named risk, gets one new reviewer, which reads the repair and the findings it answers, not the whole change again. Stop after that second review: main decides the remaining findings and reports the ones left open. The one exception is a defect in the named risk found by the second review; its repair is reviewed again. No role supervises other roles.
+
+The search agent is the client's own, Explore in Claude Code, and not a role of this package. Give it the question, ask for conclusions with file and line and not file contents, and pass the mid tier as the model. It counts toward the limit of active specialists. Where the client has no such agent, main searches itself.
 
 The watcher has no wiring of its own. Give the verifier role file to a subagent at the cheap tier, with an assignment limited to waiting, reading the result, and reporting it. A mid-tier implementer is the implementer role with the tier lowered the same way. The four tiers are named in [tool wiring](tools.md); apply a tier other than the role's default only through a supported runtime override.
 
@@ -62,6 +69,8 @@ Each assignment states objective, acceptance criteria, target checkout, baseline
 ## Escalate a hard question
 
 Main may consult the advisor without separate confirmation when evidence conflicts, when an architecture, security, concurrency, or migration decision is hard to reverse, or when the same failure survives two repairs. Ask once per stage: one bounded question with the evidence and the options already considered. The advisor recommends; main decides and returns to the role defaults. Explicit user model and budget limits still apply. In Claude Code the advisor is `workflow_advisor`. A client without such a role gives the question to its strongest supported setting within the project's model limits.
+
+The client's own advisor tool is a different thing from the advisor role. Each call sends the caller's whole conversation to the advisor model without caching, so its price grows with the length of the session. This contract does not limit main's use of it. Specialists follow the limit in the [specialist rules](roles/specialist.md).
 
 ## Ownership and evidence
 
