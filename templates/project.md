@@ -10,7 +10,7 @@ Adapt this file in the target repository as `docs/agent-workflow/project.md`. Re
 - Acceptance evidence and explicit completion requirements.
 - Changes that always get an independent reviewer (access rights, migrations, spending) and stages whose requirements main maps to evidence before work starts.
 - How a session waits for CI when the client in use cannot wait without tokens, and the project's own delivery role when it has one.
-- Where task records live, when the default in the workflow package's `templates/task-record.md` does not fit.
+- Where task records live, when the default in the workflow package's `templates/task-record.md` does not fit, and whether the project uses the task-record hook from `templates/hooks/`.
 - Whether the project uses the output-trimming hook from the workflow package's `templates/hooks/`, and its command list when the default does not fit.
 
 ## Task log

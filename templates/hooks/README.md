@@ -1,16 +1,20 @@
-# Output-trimming hook
+# Hooks
+
+Two optional Claude Code hooks: one keeps test and build output out of the conversation, and one tells a new session that its branch has a [task record](#task-record-hook). The installer installs neither.
+
+## Output-trimming hook
 
 `trim_output.py` is a Claude Code `PreToolUse` hook. It keeps the output of test and build commands out of the conversation, where every later request would read it again. The [coordination contract](../../docs/agent-workflow/coordination.md#select-roles) sends runs with long output to the verifier. With the hook, main may run the commands it covers itself, and the verifier's own runs are trimmed too.
 
 The installer does not install it. A project adopts it by hand, only when requested.
 
-## What it does
+### What it does
 
 When an agent runs one plain command that starts with a listed runner, such as `pytest -q` or `npm test`, the hook rewrites the call. The whole output goes to a file. The agent sees the file's path first, then the last 60 lines and the exit status. The command's exit status is kept, so a failing run still fails. The command runs in a subshell, so a directory change or a variable it sets does not carry over to the next call.
 
 Everything else passes unchanged: a command with pipes, redirections, several statements or substitutions, a background command, a PowerShell call, and a command that is not on the list. The hook never approves or blocks a call.
 
-## Adopt it
+### Adopt it
 
 1. Copy `trim_output.py` to `.claude/hooks/trim_output.py` in the project. It needs Python 3.11 or later and nothing else. It works on Windows with Git Bash, on Linux and on macOS, in bash and in zsh.
 2. Add the hook to the project's `.claude/settings.json`:
@@ -34,7 +38,7 @@ On macOS and Linux the interpreter is usually `python3`, and `python` may not ex
 
 3. Run a test command in a new session and check that the result starts with `[full output:` and ends with a line that starts with `[exit`.
 
-## Settings
+### Settings
 
 Set these as environment variables, for example under `env` in the same settings file.
 
@@ -44,7 +48,7 @@ Set these as environment variables, for example under `env` in the same settings
 | `WORKFLOW_TRIM_LINES` | How many last lines to show. | 60 |
 | `WORKFLOW_TRIM_DIR` | Where the output files go. A relative path is taken from the directory the command runs in. | The session's scratchpad directory when the client names one, otherwise a directory of the user's own under the system temp directory. |
 
-## Limits
+### Limits
 
 - It covers the Bash tool only. Commands run through the PowerShell tool are not trimmed.
 - It covers one plain command. `cd app && npm test` and `CI=1 pytest` pass unchanged.
@@ -52,3 +56,33 @@ Set these as environment variables, for example under `env` in the same settings
 - When the output file cannot be created, the command runs unchanged.
 - The output files are not cleaned up by the hook. In the session's scratchpad the client removes them with the session.
 - A runner that prints its failures first and a long summary last can push the failure out of the shown lines. The path to the full output is always printed; search that file for the failure and do not read it whole.
+
+## Task-record hook
+
+`task_record.py` is a Claude Code `SessionStart` hook. A [task record](../task-record.md) carries a task from one session to the next, but a new session does not know that one exists. When a session starts, the hook looks for the record named after the current branch and prints its path, which the client adds to the session's context. The agent then reads the record before it plans.
+
+When no record matches the branch, the hook names the records changed in the last 14 days, because a task can move to another branch. It prints nothing when there is no record, on any error, and outside a Git repository unless `WORKFLOW_TASK_RECORDS` names the directory. It only reads.
+
+Adopt it the same way: copy `task_record.py` to `.claude/hooks/task_record.py` and add it to the project's `.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {"type": "command", "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/task_record.py\""}
+        ]
+      }
+    ]
+  }
+}
+```
+
+Without a matcher the hook runs on every start: a new session, a resumed one, and after the history is cleared or compacted. Set `WORKFLOW_TASK_RECORDS` when the project keeps its records somewhere else; a relative path is taken from the session's directory.
+
+Limits:
+
+- It finds a record by the branch name with every `/` replaced by `-`. A record kept under another name is only listed among the recent ones.
+- Another clone and a cloud session do not have the file; there the pull request carries the task.
+- It prints the path, not the contents, so the record costs nothing until the agent reads it.
