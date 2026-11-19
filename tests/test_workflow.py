@@ -4,9 +4,11 @@ import os
 from pathlib import Path
 import shutil
 import tempfile
+import time
 import subprocess
 import sys
 import unittest
+from unittest.mock import patch
 
 
 SPEC = importlib.util.spec_from_file_location('workflow', Path(__file__).resolve().parents[1] / 'scripts/workflow.py')
@@ -147,6 +149,162 @@ def assistant(message_id, model='model-a', **usage):
 def write_lines(path, records):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(''.join(json.dumps(record) + '\n' for record in records), encoding='utf-8')
+
+
+def run_git(directory, *arguments):
+    # The settings keep the user's own signing and hooks out of the test.
+    subprocess.run(['git', '-C', str(directory), '-c', 'user.name=t', '-c', 'user.email=t@example.com',
+                    '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=', *arguments],
+                   check=True, capture_output=True)
+
+
+class StatusTests(unittest.TestCase):
+    def tree(self, home):
+        return sorted((path.relative_to(home).as_posix(), path.read_bytes() if path.is_file() else None)
+                      for path in home.rglob('*'))
+
+    def test_a_fresh_installation_is_current_and_status_writes_nothing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            workflow.install(home)
+            before = self.tree(home)
+            lines, current = workflow.installed_state(home)
+            self.assertTrue(current)
+            self.assertEqual(len([line for line in lines if line.startswith('  current ')]), 6)
+            self.assertEqual(self.tree(home), before)
+
+    def test_missing_differing_and_stale_files_are_named(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            workflow.install(home)
+            (home / 'agents' / 'workflow_reviewer.md').write_text('# older\n')
+            (home / 'agents' / 'workflow_verifier.md').unlink()
+            (home / 'agents' / 'workflow_architecture.md').write_text('# removed role\n')
+            (home / 'agents' / 'project_reviewer.md').write_text('# another package\n')
+            before = self.tree(home)
+            lines, current = workflow.installed_state(home)
+            text = '\n'.join(lines)
+            self.assertFalse(current)
+            self.assertIn('differs  agents/workflow_reviewer.md', text)
+            self.assertIn('missing  agents/workflow_verifier.md', text)
+            self.assertIn('stale    agents/workflow_architecture.md', text)
+            self.assertNotIn('project_reviewer', text)
+            self.assertEqual(self.tree(home), before)
+
+    def test_an_empty_home_reports_every_file_missing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            lines, current = workflow.installed_state(Path(directory) / 'none')
+            self.assertFalse(current)
+            self.assertEqual(len([line for line in lines if line.startswith('  missing ')]), 6)
+            self.assertFalse((Path(directory) / 'none').exists())
+
+    def test_an_installation_from_another_checkout_names_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            workflow.install(home)
+            (home / 'skills' / 'engineering-workflow' / 'package-root.txt').write_text('D:/elsewhere/package\n')
+            lines, current = workflow.installed_state(home)
+            self.assertFalse(current)
+            self.assertIn('names another checkout: D:/elsewhere/package', '\n'.join(lines))
+
+    def test_a_path_that_install_refuses_is_not_called_missing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            workflow.install(home)
+            role = home / 'agents' / 'workflow_reviewer.md'
+            role.unlink()
+            role.mkdir()
+            lines, current = workflow.installed_state(home)
+            self.assertFalse(current)
+            self.assertIn('blocked  agents/workflow_reviewer.md', '\n'.join(lines))
+            file_home = home / 'a-file'
+            file_home.write_text('x')
+            lines, current = workflow.installed_state(file_home)
+            self.assertFalse(current)
+
+    def test_an_unknown_remote_is_not_reported_as_current(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            workflow.install(home)
+            with patch.object(workflow, 'checkout_state', return_value=(['Package: x'], None)):
+                text, current = workflow.status(home)
+            self.assertTrue(current)
+            self.assertNotIn('Current.', text)
+            self.assertIn('not compared', text)
+
+    def test_a_checkout_behind_its_remote_is_not_current(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            run_git(base, 'init', '-q', '--bare', '-b', 'main', 'origin.git')
+            run_git(base, 'clone', '-q', 'origin.git', 'first')
+            run_git(base / 'first', 'checkout', '-q', '-b', 'main')
+            run_git(base / 'first', 'commit', '-q', '--allow-empty', '-m', 'one')
+            run_git(base / 'first', 'push', '-q', 'origin', 'main')
+            run_git(base, 'clone', '-q', 'origin.git', 'second')
+            lines, current = workflow.checkout_state(base / 'second')
+            self.assertTrue(current)
+            self.assertIn('same revision as origin/main', lines[1])
+            run_git(base / 'first', 'commit', '-q', '--allow-empty', '-m', 'two')
+            run_git(base / 'first', 'push', '-q', 'origin', 'main')
+            # Without a fetch the second clone cannot know, and says what its answer rests on.
+            lines, current = workflow.checkout_state(base / 'second')
+            self.assertTrue(current)
+            self.assertIn('as of the last fetch', lines[1])
+            lines, current = workflow.checkout_state(base / 'second', fetch=True)
+            self.assertFalse(current)
+            self.assertIn('1 commit behind origin/main (fetched now)', lines[1])
+            run_git(base / 'second', 'commit', '-q', '--allow-empty', '-m', 'local')
+            tracked = base / 'second' / 'tracked.txt'
+            tracked.write_text('x')
+            run_git(base / 'second', 'add', 'tracked.txt')
+            run_git(base / 'second', 'commit', '-q', '-m', 'again')
+            (base / 'second' / 'note.txt').write_text('x')
+            # A touched tracked file makes `git status` want to refresh the index; status must not write it.
+            later = time.time() + 100
+            os.utime(tracked, (later, later))
+            index = base / 'second' / '.git' / 'index'
+            before = index.read_bytes()
+            text = '\n'.join(workflow.checkout_state(base / 'second')[0])
+            self.assertEqual(index.read_bytes(), before)
+            self.assertIn('2 commits not on origin/main', text)
+            self.assertIn('uncommitted changes', text)
+            run_git(base / 'second', 'remote', 'remove', 'origin')
+            lines, current = workflow.checkout_state(base / 'second')
+            self.assertIsNone(current)
+            self.assertIn('not compared with the remote', '\n'.join(lines))
+
+    def test_a_fetch_follows_a_changed_default_branch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            run_git(base, 'init', '-q', '--bare', '-b', 'main', 'origin.git')
+            run_git(base, 'clone', '-q', 'origin.git', 'first')
+            run_git(base / 'first', 'checkout', '-q', '-b', 'main')
+            run_git(base / 'first', 'commit', '-q', '--allow-empty', '-m', 'one')
+            run_git(base / 'first', 'push', '-q', 'origin', 'main')
+            run_git(base, 'clone', '-q', 'origin.git', 'second')
+            run_git(base / 'first', 'checkout', '-q', '-b', 'next')
+            run_git(base / 'first', 'commit', '-q', '--allow-empty', '-m', 'two')
+            run_git(base / 'first', 'push', '-q', 'origin', 'next')
+            run_git(base / 'origin.git', 'symbolic-ref', 'HEAD', 'refs/heads/next')
+            lines, current = workflow.checkout_state(base / 'second', fetch=True)
+            self.assertFalse(current)
+            self.assertIn('1 commit behind origin/next (fetched now)', lines[1])
+
+    def test_a_package_outside_git_reports_an_unknown_revision(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.dict(os.environ, {'GIT_CEILING_DIRECTORIES': str(Path(directory).resolve().parent)}):
+                lines, current = workflow.checkout_state(Path(directory).resolve())
+            self.assertIsNone(current)
+            self.assertIn('not a Git checkout', lines[0])
+
+    def test_the_command_exits_with_one_when_not_current(self):
+        script = Path(__file__).resolve().parents[1] / 'scripts/workflow.py'
+        with tempfile.TemporaryDirectory() as directory:
+            done = subprocess.run([sys.executable, str(script), 'status', '--home', directory],
+                                  capture_output=True, text=True)
+            self.assertEqual(done.returncode, 1)
+            self.assertIn('Not current.', done.stdout)
+            self.assertEqual(list(Path(directory).iterdir()), [])
 
 
 class UsageTests(unittest.TestCase):
