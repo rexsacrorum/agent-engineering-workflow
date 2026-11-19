@@ -200,26 +200,22 @@ def checkout_state(package, fetch=False):
     return lines, current
 
 
-def is_link(path):
-    try:
-        info = path.lstat()
-    except OSError:
-        return False
-    reparse = getattr(info, 'st_file_attributes', 0) & getattr(stat, 'FILE_ATTRIBUTE_REPARSE_POINT', 0)
-    return bool(stat.S_ISLNK(info.st_mode) or reparse)
-
-
 def installed_state(home, package=PACKAGE):
     """Compare the installed files with what `install` would write now. Reads only."""
     package = Path(package).resolve()
-    destination = Path(home).expanduser().absolute()
+    # As in `install`: the home itself may be reached through links; links inside it are refused.
+    try:
+        destination = Path(home).expanduser().resolve()
+    except (RuntimeError, OSError):
+        destination = Path(home).expanduser().absolute()
     writes = planned_writes(destination, package)
     lines = [f'Installed in {destination.as_posix()}:']
     current = True
     for path, content in sorted(writes.items()):
         name = path.relative_to(destination).as_posix()
         try:
-            if any(is_link(parent) for parent in (path, *path.parents)):
+            inside = (path, *path.parents[:len(path.relative_to(destination).parts) - 1])
+            if any(is_link(parent) for parent in inside):
                 state = 'linked'
             elif not path.exists():
                 state = 'missing'

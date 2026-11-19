@@ -232,6 +232,25 @@ class StatusTests(unittest.TestCase):
             self.assertNotIn('Current.', text)
             self.assertIn('not compared', text)
 
+    def test_a_home_reached_through_a_link_is_current_and_a_link_inside_it_is_named(self):
+        with tempfile.TemporaryDirectory() as directory:
+            real = Path(directory) / 'real'
+            real.mkdir()
+            home = Path(directory) / 'home'
+            try:
+                home.symlink_to(real, target_is_directory=True)
+            except OSError:
+                self.skipTest('symbolic links are not available')
+            workflow.install(home)
+            self.assertTrue(workflow.installed_state(home)[1])
+            role = real / 'agents' / 'workflow_reviewer.md'
+            kept = real / 'kept.md'
+            role.replace(kept)
+            role.symlink_to(kept)
+            lines, current = workflow.installed_state(home)
+            self.assertFalse(current)
+            self.assertIn('linked   agents/workflow_reviewer.md', '\n'.join(lines))
+
     def test_a_checkout_behind_its_remote_is_not_current(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
