@@ -6,6 +6,7 @@ This package ships wiring for Claude Code:
 
 - Role wiring: `.claude/agents/workflow_*.md`, with `model` and `effort` in the frontmatter, and `disallowedTools` for the roles that only read.
 - Installed to `~/.claude/agents/` and `~/.claude/skills/engineering-workflow/` by `python scripts/workflow.py install`.
+- Check the installation: `python scripts/workflow.py status`.
 - Repository instructions: CLAUDE.md. When a repository has both CLAUDE.md and AGENTS.md, Claude Code reads only CLAUDE.md by default, so import the other file there with a line `@AGENTS.md` or put the routing in CLAUDE.md. It reads AGENTS.md by itself only when no CLAUDE.md exists.
 - Advisor: `workflow_advisor`.
 

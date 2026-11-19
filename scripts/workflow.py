@@ -1,4 +1,5 @@
-"""Validate or install this workflow package, or report a session's token usage and file edits.
+"""Validate or install this workflow package, report whether the installation is current, or report a session's
+token usage and file edits.
 
 Python 3.11+, standard library only.
 """
@@ -11,6 +12,7 @@ from pathlib import Path, PurePosixPath
 import re
 import shutil
 import stat
+import subprocess
 
 
 PACKAGE = Path(__file__).resolve().parents[1]
@@ -138,6 +140,121 @@ def install(home, package=PACKAGE, replace=False):
             with path.open('xb') as stream:
                 stream.write(content)
     return len(writes)
+
+
+def git(package, *arguments):
+    try:
+        # No optional locks, so `git status` does not rewrite the index. No prompt, so a fetch cannot wait for one.
+        done = subprocess.run(['git', '--no-optional-locks', '-C', str(package), *arguments], capture_output=True,
+                              timeout=60, encoding='utf-8', errors='replace', stdin=subprocess.DEVNULL,
+                              env={**os.environ, 'GIT_TERMINAL_PROMPT': '0'})
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return done.stdout.strip() if done.returncode == 0 else None
+
+
+def remote_default(package):
+    listed = git(package, 'ls-remote', '--symref', 'origin', 'HEAD') or ''
+    found = re.match(r'ref: refs/heads/(\S+)\s+HEAD', listed)
+    return f'origin/{found.group(1)}' if found else None
+
+
+def commits(count):
+    return '1 commit' if count == '1' else f'{count} commits'
+
+
+def checkout_state(package, fetch=False):
+    """Describe the package checkout. Installed files point back to it, so its revision is the installed version.
+
+    The second value is True when the checkout has every commit of the remote default branch, False when it is
+    behind, and None when the two could not be compared.
+    """
+    revision = git(package, 'rev-parse', '--short', 'HEAD')
+    if revision is None:
+        return [f'Package: {package.as_posix()} is not a Git checkout, so its revision is unknown.'], None
+    branch = git(package, 'branch', '--show-current') or 'no branch'
+    lines = [f'Package: {package.as_posix()} at {revision} ({branch})']
+    current = True
+    fetched = fetch and git(package, 'fetch', '--quiet', 'origin') is not None
+    if fetch and not fetched:
+        lines.append('  could not fetch from origin; the comparison below uses the last fetch')
+    # A fetch does not move the local origin/HEAD, so after one ask the remote which branch is its default.
+    main = ((fetched and remote_default(package)) or git(package, 'rev-parse', '--abbrev-ref', 'origin/HEAD')
+            or 'origin/main')
+    behind = git(package, 'rev-list', '--count', f'HEAD..{main}')
+    ahead = git(package, 'rev-list', '--count', f'{main}..HEAD')
+    when = 'fetched now' if fetched else 'as of the last fetch; pass --fetch to ask the remote'
+    if behind is None or ahead is None:
+        current = None
+        lines.append(f'  {main} is not known here, so this revision is not compared with the remote')
+    elif behind == '0' and ahead == '0':
+        lines.append(f'  same revision as {main} ({when})')
+    else:
+        if behind != '0':
+            current = False
+            lines.append(f'  {commits(behind)} behind {main} ({when}): update this checkout')
+        if ahead != '0':
+            lines.append(f'  {commits(ahead)} not on {main}: roles read rules from this unmerged work')
+    if git(package, 'status', '--porcelain'):
+        lines.append('  uncommitted changes: roles read rules from these files as they are now')
+    return lines, current
+
+
+def installed_state(home, package=PACKAGE):
+    """Compare the installed files with what `install` would write now. Reads only."""
+    package = Path(package).resolve()
+    # As in `install`: the home itself may be reached through links; links inside it are refused.
+    try:
+        destination = Path(home).expanduser().resolve()
+    except (RuntimeError, OSError):
+        destination = Path(home).expanduser().absolute()
+    writes = planned_writes(destination, package)
+    lines = [f'Installed in {destination.as_posix()}:']
+    current = True
+    for path, content in sorted(writes.items()):
+        name = path.relative_to(destination).as_posix()
+        try:
+            inside = (path, *path.parents[:len(path.relative_to(destination).parts) - 1])
+            if any(is_link(parent) for parent in inside):
+                state = 'linked'
+            elif not path.exists():
+                state = 'missing'
+            elif not path.is_file():
+                state = 'blocked'
+            else:
+                found = path.read_bytes()
+                state = 'current' if found == content else 'differs'
+                if state == 'differs' and path.name == 'package-root.txt':
+                    name += f" (names another checkout: {found.decode('utf-8', errors='replace').strip()})"
+        except OSError as error:
+            state = 'unread'
+            name += f' ({error.strerror or error})'
+        current = current and state == 'current'
+        lines.append(f'  {state:8} {name}')
+    for path in sorted((destination / 'agents').glob('workflow_*.md')):
+        if path not in writes:
+            current = False
+            lines.append(f'  {"stale":8} {path.relative_to(destination).as_posix()} '
+                         '(the package has no such role now, and `install` does not remove it)')
+    return lines, current
+
+
+def status(home, package=PACKAGE, fetch=False):
+    package = Path(package).resolve()
+    checkout, checkout_current = checkout_state(package, fetch)
+    installed, installed_current = installed_state(home, package)
+    lines = checkout + installed
+    if not installed_current:
+        lines.append('Not current. `install --replace` backs up and rewrites missing and differing files. '
+                     'It refuses a linked path and one that is not a file (blocked), and it leaves a stale role '
+                     'file in place: move those away by hand.')
+    elif checkout_current is None:
+        lines.append('The installed files match this checkout. Its revision was not compared with a remote.')
+    elif not checkout_current:
+        lines.append('The installed files match this checkout, and the checkout is behind.')
+    else:
+        lines.append('Current.')
+    return '\n'.join(lines), installed_current and checkout_current is not False
 
 
 def default_home():
@@ -457,6 +574,10 @@ def main():
     installer.add_argument('--home', type=Path, help='client home; defaults to CLAUDE_CONFIG_DIR or ~/.claude')
     installer.add_argument('--replace', action='store_true',
                            help='back up and replace installed files that differ')
+    state = commands.add_parser('status', help='whether the installed files match this checkout; reads only')
+    state.add_argument('--home', type=Path, help='client home; defaults to CLAUDE_CONFIG_DIR or ~/.claude')
+    state.add_argument('--fetch', action='store_true',
+                       help='fetch from origin first, so the comparison with its default branch is up to date')
     usage = commands.add_parser('usage', help='token totals and file edits per role for one Claude Code session')
     usage.add_argument('session', type=Path, help='path to the session .jsonl transcript')
     sessions = commands.add_parser('sessions', help='one log row per Claude Code session, for the task log')
@@ -473,6 +594,10 @@ def main():
             print(format_activity(*session_activity(args.session)))
         except (ValueError, OSError) as error:
             parser.exit(1, f'usage report failed: {error}\n')
+    elif args.command == 'status':
+        text, current = status(args.home or default_home(), fetch=args.fetch)
+        print(text)
+        parser.exit(0 if current else 1)
     elif args.command == 'validate':
         try:
             count = validate()

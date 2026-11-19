@@ -55,6 +55,8 @@ python scripts/workflow.py install
 
 `install` copies the skill and the `workflow_*` agents into the Claude Code home (`CLAUDE_CONFIG_DIR`, default `~/.claude`). Installed files point back to this checkout, so keep it available. A differing installed file is refused unless `--replace` is given, which backs it up first. `--home <directory>` installs somewhere else. The installer refuses to write through a symbolic link or junction inside the client home. The command does not edit your settings or any project.
 
+`python scripts/workflow.py status` reports whether the installation is current and changes nothing. It prints the revision of this checkout, which is the installed version because the installed files point back to it, then each installed file as `current`, `differs` or `missing` (or `linked`, `blocked` or `unread` for a path the installer would refuse or that cannot be read), and each `workflow_*` agent file that the package no longer has as `stale`. `--fetch` asks the remote first; without it the comparison with the remote's default branch rests on the last fetch. The command exits with 1 when an installed file is not current or the checkout is behind.
+
 The installer does not delete anything. A role removed from the package stays in the client home until it is deleted by hand: after an update that drops a role, delete its file under `agents/` there. The roles dropped so far are `workflow_architecture`, `workflow_qa_architect`, `workflow_docs`, and `workflow_delivery`.
 
 Open a new session after installing so the roles are discovered.
