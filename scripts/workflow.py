@@ -195,8 +195,9 @@ def checkout_state(package, fetch=False):
             lines.append(f'  {commits(behind)} behind {main} ({when}): update this checkout')
         if ahead != '0':
             lines.append(f'  {commits(ahead)} not on {main}: roles read rules from this unmerged work')
-    if git(package, 'status', '--porcelain'):
-        lines.append('  uncommitted changes: roles read rules from these files as they are now')
+    # Tracked files only: an untracked folder beside the package, such as a tool's cache, changes no rule.
+    if git(package, 'status', '--porcelain', '--untracked-files=no'):
+        lines.append('  uncommitted changes to tracked files: roles read rules from them as they are now')
     return lines, current
 
 
