@@ -286,7 +286,10 @@ class StatusTests(unittest.TestCase):
             text = '\n'.join(workflow.checkout_state(base / 'second')[0])
             self.assertEqual(index.read_bytes(), before)
             self.assertIn('2 commits not on origin/main', text)
-            self.assertIn('uncommitted changes', text)
+            self.assertNotIn('uncommitted changes', text)
+            tracked.write_text('changed')
+            self.assertIn('uncommitted changes to tracked files',
+                          '\n'.join(workflow.checkout_state(base / 'second')[0]))
             run_git(base / 'second', 'remote', 'remove', 'origin')
             lines, current = workflow.checkout_state(base / 'second')
             self.assertIsNone(current)
